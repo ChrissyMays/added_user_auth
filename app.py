@@ -1,11 +1,10 @@
-from dataclasses import fields
-from flask import Flask
+from flask import Flask, request, jsonify
 from flask_sqlalchemy import SQLAlchemy
 from flask_marshmallow import Marshmallow
 from flask_cors import CORS
 
 app = Flask(__name__)
-app.config["SQLALCHEMY_DATABASE_URI"] = ""
+app.config["SQLALCHEMY_DATABASE_URI"] = "postgresql://wkcxtlsrywnsoe:95cb0e21d62808d52800be5caf494689e82aa9051cfba1c63f01e693f4e02270@ec2-54-157-160-218.compute-1.amazonaws.com:5432/d1kid9j526m8ej"
 
 db = SQLAlchemy(app)
 ma = Marshmallow(app)
@@ -36,14 +35,91 @@ class QuoteSchema(ma.Schema):
 quote_schema = QuoteSchema()
 multiple_quote_schema = QuoteSchema(many=True)
         
-
-if __name__ == "__main__":
-    app.run(debug=True, port=8080)
-
 class DateSchema(ma.Schema):
     class Meta:
         fields = ("id", "day", "quote")
 
 
 date_schema = DateSchema()
-multiple_date_schema = DateSchema(many=True)
+
+@app.route("/quote/add", methods=["POST"])
+def add_quote():
+    if request.content_type != "application/json":
+        return jsonify ("ERROR: Data must be sent as JSON.")
+
+
+    post_data = request.get_json()
+    text = post_data.get("text")
+    author = post_data.get("author")
+
+    record = Quote(text, author)
+    db.session.add(record)
+    db.session.commit()
+
+    return jsonify(quote_schema.dump(record))
+
+@app.route("/quote/get/<id>", methods=["GET"])
+def get_quote_by_id(id):
+     records = db.session.query(Quote).filter(Quote.id == id).first()
+     print(record)
+     return jsonify(quote_schema.dump(record))
+
+
+@app.route("/date/add", methods=["POST"])
+def create_initial_date():
+    record_check = db.session.query(Date).first()
+    if record_check is not None:
+        return jsonify("Error: Date has already been initialized")
+
+    if request.content_type != "application/json":
+        return jsonify("Error: Data must be sent as JSON")
+
+
+    post_data = request.get_json()
+    day = post_data.get("day")
+    quote = post_data.get("quote")
+
+    record = Date(day, quote)
+    db.session.add(record)
+    db.session.commit()
+
+    return jsonify(date_schema.dump(record))
+
+@app.route("/date/get", methods=["GET"])
+def get_date():
+    record = db.session.query(Date).first()
+    return jsonify(date_schema.dump(record))
+
+@app.route("/date/update", methods=["PUT"])
+def update_date(): 
+    record = db.session.query(Date).first()
+    if record is None: 
+        return jsonify("Error date has not been initialized")
+
+    if request.content_type != "application/json":
+        return jsonify("Error Data must be sent as JSON")
+
+    put_data = request.get_json()
+    day = put_data.get("day")
+
+    all_quotes = db.session.query(Quote).all()
+    current_quote = db.session.query(Quote).filter(Quote.id == record.quote).first()
+    current_quote_index = all_quotes.index(current_quote)
+    if current_quote_index + 1 < len(all_quotes):
+        next_quote = all_quotes[current_quote_index + 1]
+    else:
+        next_quote = all_quotes[0]
+    
+
+    record.day = day 
+    record.quote = next_quote.id
+    db.session.commit()
+
+    return jsonify(date_schema.dump(record))
+
+
+    
+
+if __name__ == "__main__":
+    app.run(debug=True, port=8080)
+
